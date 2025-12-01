@@ -1,11 +1,12 @@
-import mongoose from 'mongoose';
+import mongoose from "mongoose";
 
 const userSchema = new mongoose.Schema(
   {
+    // Basic Profile Fields
     name: { type: String },
     email: { type: String },
     password: { type: String },
-    mobile: { type: String },
+    mobile: { type: String, unique: true },
     profileImage: { type: String },
     nickname: { type: String },
     gender: { type: String },
@@ -22,12 +23,12 @@ const userSchema = new mongoose.Schema(
 
     language: {
       type: String,
-      default: 'English',
+      default: "English",
     },
 
     userType: {
       type: String,
-      default: 'user',
+      default: "user",
     },
 
     wallet: {
@@ -35,31 +36,63 @@ const userSchema = new mongoose.Schema(
       default: 0,
     },
 
-    // Location schema
+    // ----------------------------
+    // 📌 LOCATION (GeoJSON Format)
+    // ----------------------------
     location: {
       type: {
         type: String,
-        enum: ['Point'],
-        default: 'Point',
+        enum: ["Point"],
+        default: "Point",
       },
       coordinates: {
-        type: [Number],
+        type: [Number], // [longitude, latitude]
         default: [0.0, 0.0],
-      }
+      },
     },
 
     hasCompletedProfile: { type: Boolean, default: false },
     hasLoggedIn: { type: Boolean, default: false },
 
+    // ----------------------------
+    // 📌 OTP LOGIN SYSTEM
+    // ----------------------------
     otp: { type: String },
     token: { type: String },
-    expiresAt: { type: Date }
+    expiresAt: { type: Date },
+
+    // ----------------------------
+    // ⚠️ WARNING SYSTEM
+    // ----------------------------
+
+    warningsCount: {
+      type: Number,
+      default: 0, // how many warnings user received
+    },
+
+    // TEMPORARY ACCOUNT BLOCK (24 hours after 3 warnings)
+    isTemporarilyBlocked: {
+      type: Boolean,
+      default: false,
+    },
+
+    temporaryBlockExpiresAt: {
+      type: Date,
+      default: null,
+    },
+
+    // PERMANENT ACCOUNT BLOCK (after 5 warnings)
+    isPermanentlyBlocked: {
+      type: Boolean,
+      default: false,
+    }
+
   },
   { timestamps: true }
 );
 
-// ⭐ ADD THIS IMPORTANT LINE
+// ⭐ Required for geolocation queries
 userSchema.index({ location: "2dsphere" });
 
-const User = mongoose.model('User', userSchema);
+const User = mongoose.model("User", userSchema);
 export default User;

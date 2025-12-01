@@ -5,25 +5,44 @@ import * as Room from "../Controller/roomController.js"
 const router = express.Router();
 const upload = multer({ dest: "tmp/" }); 
 
-
+//registration
 router.post("/send-otp", UserController.sendOtp);
 router.post("/verify-otp", UserController.verifyOtp);
 router.post("/resend-otp", UserController.resendOtp);
 router.put('/createprofile/:userId', upload.single("profileImage"), UserController.uploadUserProfileImage);
+router.put("/update-language/:userId", UserController.updateLanguage);
 router.put("/update-location", UserController.updateUserLocation);
 router.get('/getlocation/:userId', UserController.getUserLocation);
 
-
+//get user details
 router.get("/users/all", UserController.getAllUsers);
 router.get("/users/:userId", UserController.getUserById);
 router.delete("/users/delete/:userId", UserController.deleteUser);
 
+
+//room creation
 router.post("/create", Room.createRoom);
 router.get("/all", Room.getAllRooms);
 router.get("/:roomId", Room.getRoomById);
 router.put("/:roomId", Room.updateRoom);
 router.delete("/:roomId", Room.deleteRoom);
 
+//nearby user
 router.get("/nearby-users/:userId", Room.getNearbyUsersByUserId);
 
+//warning and report for block
+// USER
+router.post("/report", Room.createReport);
+
+// ADMIN
+router.put("/admin/handle/:reportId", Room.handleReport);
+router.get("/admin/reports", Room.getAllReports);
+router.get("/admin/warnings", Room.getAllWarnings);
+router.get("/admin/report/:reportId", Room.getReportById);
+router.delete("/admin/delete/:reportId", Room.deleteReport);
+
 export default router;
+
+
+
+                                        

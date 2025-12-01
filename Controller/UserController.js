@@ -258,6 +258,48 @@ export const uploadUserProfileImage = async (req, res) => {
     }
 };
 
+// ---------------------------------------------
+// UPDATE LANGUAGE ONLY
+// ---------------------------------------------
+export const updateLanguage = async (req, res) => {
+  try {
+    const { userId } = req.params;
+    const { language } = req.body;
+
+    if (!language) {
+      return res.status(400).json({
+        success: false,
+        message: "Language is required"
+      });
+    }
+
+    const user = await User.findById(userId);
+
+    if (!user) {
+      return res.status(404).json({
+        success: false,
+        message: "User not found"
+      });
+    }
+
+    user.language = language;
+    await user.save();
+
+    return res.status(200).json({
+      success: true,
+      message: "Language updated successfully",
+      user
+    });
+
+  } catch (error) {
+    return res.status(500).json({
+      success: false,
+      message: "Error updating language",
+      error: error.message
+    });
+  }
+};
+
 // ----------------------------------------------------
 // 📌 UPDATE USER LOCATION
 // ----------------------------------------------------
