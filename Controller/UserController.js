@@ -258,6 +258,103 @@ export const uploadUserProfile = async (req, res) => {
     }
 };
 
+// ----------------------------------------------------
+// 📌 GET USER PROFILE DETAILS (including profileImage)
+// ----------------------------------------------------
+export const getUserProfile = async (req, res) => {
+  try {
+    const { userId } = req.params;
+
+    if (!userId) {
+      return res.status(400).json({
+        success: false,
+        message: "userId missing in URL params"
+      });
+    }
+
+    const user = await User.findById(userId);
+
+    if (!user) {
+      return res.status(404).json({
+        success: false,
+        message: "User not found"
+      });
+    }
+
+    return res.status(200).json({
+      success: true,
+      message: "User profile fetched successfully",
+      user
+    });
+
+  } catch (error) {
+    return res.status(500).json({
+      success: false,
+      message: "Error fetching profile",
+      error: error.message
+    });
+  }
+};
+
+
+// ----------------------------------------------------
+// 📌 DELETE USER PROFILE IMAGE ONLY
+// ----------------------------------------------------
+export const deleteUserProfileImage = async (req, res) => {
+  try {
+    const { userId } = req.params;
+
+    if (!userId) {
+      return res.status(400).json({
+        success: false,
+        message: "userId missing in URL params"
+      });
+    }
+
+    const user = await User.findById(userId);
+
+    if (!user) {
+      return res.status(404).json({
+        success: false,
+        message: "User not found"
+      });
+    }
+
+    if (!user.profileImage) {
+      return res.status(400).json({
+        success: false,
+        message: "No profile image found to delete"
+      });
+    }
+
+    // 🔥 Extract Cloudinary public_id from URL
+    const publicId = user.profileImage
+      .split("/")
+      .slice(-1)[0]
+      .split(".")[0];
+
+    // 🔥 Delete from Cloudinary
+    await cloudinary.uploader.destroy(`userProfileImages/${publicId}`);
+
+    // 🔥 Remove only image from DB
+    user.profileImage = null;
+    await user.save();
+
+    return res.status(200).json({
+      success: true,
+      message: "Profile image deleted successfully"
+    });
+
+  } catch (error) {
+    return res.status(500).json({
+      success: false,
+      message: "Error deleting profile image",
+      error: error.message
+    });
+  }
+};
+
+
 // ---------------------------------------------
 // UPDATE LANGUAGE ONLY
 // ---------------------------------------------
@@ -504,99 +601,6 @@ export const updateUserProfileImage = async (req, res) => {
 };
 
 
-// ----------------------------------------------------
-// 📌 GET USER PROFILE IMAGE (using userId in params)
-// ----------------------------------------------------
-export const getUserProfileImage = async (req, res) => {
-  try {
-    const { userId } = req.params;
-
-    if (!userId) {
-      return res.status(400).json({
-        success: false,
-        message: "userId missing in URL params"
-      });
-    }
-
-    const user = await User.findById(userId);
-
-    if (!user) {
-      return res.status(404).json({
-        success: false,
-        message: "User not found"
-      });
-    }
-
-    return res.status(200).json({
-      success: true,
-      message: "Profile image fetched successfully",
-      profileImage: user.profileImage ? user.profileImage : null
-    });
-
-  } catch (error) {
-    return res.status(500).json({
-      success: false,
-      message: error.message
-    });
-  }
-};
-
-// ----------------------------------------------------
-// 📌 DELETE USER PROFILE IMAGE (using userId in params)
-// ----------------------------------------------------
-export const deleteUserProfileImage = async (req, res) => {
-  try {
-    const { userId } = req.params;
-
-    if (!userId) {
-      return res.status(400).json({
-        success: false,
-        message: "userId missing in URL params"
-      });
-    }
-
-    const user = await User.findById(userId);
-
-    if (!user) {
-      return res.status(404).json({
-        success: false,
-        message: "User not found"
-      });
-    }
-
-    // ⛔ If no image exists
-    if (!user.profileImage) {
-      return res.status(400).json({
-        success: false,
-        message: "No profile image found to delete"
-      });
-    }
-
-    // Extract Cloudinary public_id
-    const publicId = user.profileImage
-      .split("/")
-      .slice(-1)[0]
-      .split(".")[0];
-
-    // Delete from Cloudinary
-    await cloudinary.uploader.destroy(`userProfileImages/${publicId}`);
-
-    // Remove from DB
-    user.profileImage = null;
-    await user.save();
-
-    return res.status(200).json({
-      success: true,
-      message: "Profile image deleted successfully"
-    });
-
-  } catch (error) {
-    return res.status(500).json({
-      success: false,
-      message: error.message
-    });
-  }
-};
 
 
 

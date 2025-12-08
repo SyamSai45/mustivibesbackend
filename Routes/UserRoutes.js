@@ -15,8 +15,8 @@ router.put("/update-location", UserController.updateUserLocation);
 router.get('/getlocation/:userId', UserController.getUserLocation);
 router.put("/profileimage/:userId",upload.single("profileImage"), UserController.updateUserProfileImage);
 // 🔥 GET Profile Image
-router.get("/profile-image/:userId",
-  UserController.getUserProfileImage
+router.get("/profile/:userId",
+  UserController.getUserProfile
 );
 router.delete(
   "/profile-image/:userId",
