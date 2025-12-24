@@ -163,6 +163,61 @@ export const deleteRoom = async (req, res) => {
 // ----------------------------------------------------
 // GET NEARBY USERS BASED ON USER'S OWN LOCATION
 // ----------------------------------------------------
+// export const getNearbyUsersByUserId = async (req, res) => {
+//   try {
+//     const { userId } = req.params;
+
+//     if (!userId) {
+//       return res.status(400).json({
+//         success: false,
+//         message: "userId required"
+//       });
+//     }
+
+//     // 1. Find the requesting user's location
+//     const user = await User.findById(userId);
+
+//     if (!user || !user.location || !user.location.coordinates) {
+//       return res.status(404).json({
+//         success: false,
+//         message: "User location not found"
+//       });
+//     }
+
+//     const [longitude, latitude] = user.location.coordinates;
+
+//     const maxDistance = 5000; // default 5 km
+
+//     // 2. Get nearby users except the same user
+//     const nearbyUsers = await User.find({
+//       _id: { $ne: userId },
+//       location: {
+//         $near: {
+//           $geometry: {
+//             type: "Point",
+//             coordinates: [longitude, latitude]
+//           },
+//           $maxDistance: maxDistance
+//         }
+//       }
+//     });
+
+//     return res.status(200).json({
+//       success: true,
+//       baseUserLocation: { latitude, longitude },
+//       count: nearbyUsers.length,
+//       users: nearbyUsers
+//     });
+
+//   } catch (error) {
+//     return res.status(500).json({
+//       success: false,
+//       message: "Internal server error",
+//       error: error.message
+//     });
+//   }
+// };
+
 export const getNearbyUsersByUserId = async (req, res) => {
   try {
     const { userId } = req.params;
@@ -174,39 +229,25 @@ export const getNearbyUsersByUserId = async (req, res) => {
       });
     }
 
-    // 1. Find the requesting user's location
+    // 1. Find the requesting user (kept as-is)
     const user = await User.findById(userId);
 
-    if (!user || !user.location || !user.location.coordinates) {
+    if (!user) {
       return res.status(404).json({
         success: false,
-        message: "User location not found"
+        message: "User not found"
       });
     }
 
-    const [longitude, latitude] = user.location.coordinates;
-
-    const maxDistance = 5000; // default 5 km
-
-    // 2. Get nearby users except the same user
-    const nearbyUsers = await User.find({
-      _id: { $ne: userId },
-      location: {
-        $near: {
-          $geometry: {
-            type: "Point",
-            coordinates: [longitude, latitude]
-          },
-          $maxDistance: maxDistance
-        }
-      }
+    // 2. Get ALL users except the same user (no nearby logic)
+    const users = await User.find({
+      _id: { $ne: userId }
     });
 
     return res.status(200).json({
       success: true,
-      baseUserLocation: { latitude, longitude },
-      count: nearbyUsers.length,
-      users: nearbyUsers
+      count: users.length,
+      users
     });
 
   } catch (error) {
@@ -217,6 +258,7 @@ export const getNearbyUsersByUserId = async (req, res) => {
     });
   }
 };
+
 
 export const createReport  = async (req, res) => {
   try {
@@ -431,5 +473,34 @@ export const deleteReport = async (req, res) => {
     });
   } catch (error) {
     return res.status(500).json({ success: false, message: error.message });
+  }
+};
+
+// ---------------------------------------------
+// ADMIN DELETE USER (PERMANENT)
+// ---------------------------------------------
+export const adminDeleteUser = async (req, res) => {
+  try {
+    const { userId } = req.params;
+
+    const user = await User.findByIdAndDelete(userId);
+
+    if (!user) {
+      return res.status(404).json({
+        success: false,
+        message: "User not found"
+      });
+    }
+
+    return res.status(200).json({
+      success: true,
+      message: "User permanently deleted"
+    });
+
+  } catch (error) {
+    return res.status(500).json({
+      success: false,
+      message: error.message
+    });
   }
 };

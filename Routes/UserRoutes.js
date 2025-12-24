@@ -14,6 +14,11 @@ router.put("/update-language/:userId", UserController.updateLanguage);
 router.put("/update-location", UserController.updateUserLocation);
 router.get('/getlocation/:userId', UserController.getUserLocation);
 router.put("/profileimage/:userId",upload.single("profileImage"), UserController.updateUserProfileImage);
+// DELETE ACCOUNT (User)
+router.delete("/delete-account/:userId", UserController.deleteMyAccount);
+
+router.post("/deleteaccount-mobile", UserController.deleteAccountByMobile);
+router.get("/confirm-delete-account/:token", UserController.confirmDeleteAccount);
 // 🔥 GET Profile Image
 router.get("/profile/:userId",
   UserController.getUserProfile
@@ -56,6 +61,10 @@ router.get("/admin/reports", Room.getAllReports);
 router.get("/admin/warnings", Room.getAllWarnings);
 router.get("/admin/report/:reportId", Room.getReportById);
 router.delete("/admin/delete/:reportId", Room.deleteReport);
+// ADMIN HARD DELETE USER
+router.delete("/admin/delete-user/:userId", Room.adminDeleteUser);
+
+
 
 export default router;
 
