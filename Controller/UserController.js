@@ -936,6 +936,7 @@ ${deleteLink}
 If not requested, ignore this SMS.
 `;
 
+
     await sendSms(mobile, smsMessage);
 
     return res.status(200).json({
