@@ -15,12 +15,33 @@ const userSchema = new mongoose.Schema(
       type: Date,
       default: null,
     },
-
-    referralCode: {
+    myReferralCode: {
       type: String,
+      unique: true,
+      sparse: true,  // allows multiple null values
       default: null,
     },
 
+    totalCoins: {
+    type: Number,
+    default: 0
+  },
+
+    usedReferralCode: {
+      type: String,
+      default: null,
+    },
+ // ✅ NEW: Track who used this user's referral code
+    referralUsedBy: [{
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "User"
+    }],
+
+    // ✅ NEW: Track if user already used a referral code
+    hasUsedReferral: {
+      type: Boolean,
+      default: false
+    },
     language: {
       type: String,
       default: "English",
@@ -89,6 +110,8 @@ const userSchema = new mongoose.Schema(
     },
     followers: [{ type: mongoose.Schema.Types.ObjectId, ref: "User" }],
     following: [{ type: mongoose.Schema.Types.ObjectId, ref: "User" }],
+          fcmToken: { type: String, default: null }, // ✅ NEW FIELD
+
 
     isOnline: {
       type: Boolean,
