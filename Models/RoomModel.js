@@ -16,7 +16,11 @@ const roomSchema = new mongoose.Schema(
     tag: {
       type: String,
       required: true,
-    }
+    },
+    startDateTime: {
+  type: String,
+}
+
   },
   { timestamps: true }
 );

@@ -573,14 +573,9 @@ export const getMyChats = async (req, res) => {
     const { userId } = req.params;
 
     /* ---------------- VALIDATE USER ---------------- */
-    const currentUser = await User.findById(userId)
-      .select("followers following");
-
+    const currentUser = await User.findById(userId).select("followers following");
     if (!currentUser) {
-      return res.status(404).json({
-        success: false,
-        message: "User not found"
-      });
+      return res.status(404).json({ success: false, message: "User not found" });
     }
 
     /* ---------------- FIND CHAT USER IDS ---------------- */
@@ -594,50 +589,36 @@ export const getMyChats = async (req, res) => {
       deletedFor: { $ne: userId }
     }).distinct("sender");
 
-    // ✅ FIX: ObjectId → string → unique
     const chatUserIds = [
-      ...new Set(
-        [...sentUsers, ...receivedUsers].map(id => id.toString())
-      )
+      ...new Set([...sentUsers, ...receivedUsers].map(id => id.toString()))
     ];
 
     if (chatUserIds.length === 0) {
-      return res.status(200).json({
-        success: true,
-        chats: []
-      });
+      return res.status(200).json({ success: true, chats: [] });
     }
 
-    /* ---------------- FETCH APPROVED CHAT REQUESTS ---------------- */
-    const approvedRequests = await CommunicationRequest.find({
+    /* ---------------- FETCH ALL CHAT REQUESTS ---------------- */
+    const chatRequests = await CommunicationRequest.find({
       type: "chat",
-      status: "approved",
-      isBlocked: false,
-      $or: [
-        { fromUser: userId },
-        { toUser: userId }
-      ]
-    }).select("fromUser toUser");
+      $or: [{ fromUser: userId }, { toUser: userId }]
+    }).select("fromUser toUser status isBlocked");
 
-    // ✅ Fast lookup map
-    const approvedChatMap = new Set(
-      approvedRequests.map(req => {
-        const from = req.fromUser.toString();
-        const to = req.toUser.toString();
-        return from === userId ? to : from;
-      })
-    );
+    // ✅ Map chat requests for fast lookup
+    const chatRequestMap = {};
+    chatRequests.forEach(req => {
+      const otherId = req.fromUser.toString() === userId ? req.toUser.toString() : req.fromUser.toString();
+      chatRequestMap[otherId] = req;
+    });
 
     /* ---------------- BUILD CHAT LIST ---------------- */
     const chats = await Promise.all(
-      chatUserIds.map(async (otherUserId) => {
-        const otherUser = await User.findById(otherUserId)
-          .select(
-            "name nickname profileImage isOnline lastSeen mobile followers following isPermanentlyBlocked isTemporarilyBlocked"
-          );
-
+      chatUserIds.map(async otherUserId => {
+        const otherUser = await User.findById(otherUserId).select(
+          "name nickname profileImage isOnline lastSeen mobile followers following isPermanentlyBlocked isTemporarilyBlocked"
+        );
         if (!otherUser) return null;
 
+        // Last message
         const lastMessage = await Message.findOne({
           $or: [
             { sender: userId, receiver: otherUserId },
@@ -646,19 +627,24 @@ export const getMyChats = async (req, res) => {
           deletedFor: { $ne: userId }
         }).sort({ createdAt: -1 });
 
+        // Unread count
         const unreadCount = await Message.countDocuments({
           sender: otherUserId,
           receiver: userId,
           status: { $ne: "read" }
         });
 
+        // Follow info
         const isFollow = currentUser.following.includes(otherUser._id);
         const isFollowed = currentUser.followers.includes(otherUser._id);
 
-        const isBlocked =
-          otherUser.isPermanentlyBlocked || otherUser.isTemporarilyBlocked;
+        // Block info
+        const userBlocked = otherUser.isPermanentlyBlocked || otherUser.isTemporarilyBlocked;
+        const chatReq = chatRequestMap[otherUserId];
+        const isBlocked = userBlocked || (chatReq && chatReq.isBlocked === true);
 
-        const isChatApproved = approvedChatMap.has(otherUserId);
+        // Chat approval
+        const isChatApproved = chatReq ? chatReq.status === "approved" && !chatReq.isBlocked : false;
 
         return {
           user: {
@@ -684,17 +670,10 @@ export const getMyChats = async (req, res) => {
       .filter(Boolean)
       .sort((a, b) => new Date(b.updatedAt) - new Date(a.updatedAt));
 
-    return res.status(200).json({
-      success: true,
-      chats: finalChats
-    });
-
+    return res.status(200).json({ success: true, chats: finalChats });
   } catch (error) {
     console.error("❌ getMyChats error:", error);
-    return res.status(500).json({
-      success: false,
-      message: error.message
-    });
+    return res.status(500).json({ success: false, message: error.message });
   }
 };
 

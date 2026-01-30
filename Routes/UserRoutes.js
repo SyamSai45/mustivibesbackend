@@ -61,6 +61,10 @@ router.get("/all", RoomController.getAllRooms);     // ✅ CHANGED
 router.get("/room/:roomId", RoomController.getRoomById);  // ✅ CHANGED PATH to avoid conflict
 router.put("/room/:roomId", RoomController.updateRoom);    // ✅ CHANGED PATH
 router.delete("/room/:roomId", RoomController.deleteRoom); // ✅ CHANGED PATH
+router.get("/myrooms/:userId", RoomController.getUserRooms);     // ✅ CHANGED
+router.delete("/deletemyroom/:userId/:roomId", RoomController.deleteUserRoom); // ✅ CHANGED PATH
+router.put("/updatemyroom/:userId/:roomId", RoomController.updateRoomByUser); // ✅ CHANGED PATH
+
 
 /* ================= NEARBY USERS ================= */
 router.get("/nearby-users/:userId", RoomController.getNearbyUsersByUserId);  // ✅ CHANGED
