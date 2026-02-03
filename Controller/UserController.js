@@ -10,6 +10,12 @@ import AppFeedback from "../Models/AppFeedback.js";
 import Calling from "../Models/Calling.js";
 import {sendPushNotification} from "../utils/sendPushNotification.js"
 import sendSimplePush from "../utils/sendSimplePush.js";
+    import crypto from "crypto";
+    import axios from "axios";
+    import zegoService from '../config/zego-service.js';
+
+
+
 
 
 // ✅ Add this helper function at the top (after imports)
@@ -702,8 +708,11 @@ export const followUser = async (req, res) => {
   try {
     const { userId, followId } = req.body;
 
+    console.log("📥 followUser called with:", { userId, followId });
+
     // 1️⃣ Validation
     if (!userId || !followId) {
+      console.warn("⚠️ Missing userId or followId");
       return res.status(400).json({
         success: false,
         message: "userId and followId required",
@@ -711,6 +720,7 @@ export const followUser = async (req, res) => {
     }
 
     if (userId === followId) {
+      console.warn("⚠️ User tried to follow themselves");
       return res.status(400).json({
         success: false,
         message: "You cannot follow yourself",
@@ -722,14 +732,18 @@ export const followUser = async (req, res) => {
     const followUser = await User.findById(followId).select("name followers fcmToken");
 
     if (!user || !followUser) {
+      console.error("❌ User not found:", { user, followUser });
       return res.status(404).json({
         success: false,
         message: "User not found",
       });
     }
 
+    console.log("👤 Users fetched:", { userName: user.name, followUserName: followUser.name });
+
     // 3️⃣ Already followed check
     if (user.following.includes(followId)) {
+      console.warn(`⚠️ Already following ${followUser.name}`);
       return res.status(400).json({
         success: false,
         message: `You already follow ${followUser.name}`,
@@ -741,23 +755,32 @@ export const followUser = async (req, res) => {
       { _id: userId },
       { $addToSet: { following: followId } }
     );
-
     await User.updateOne(
       { _id: followId },
       { $addToSet: { followers: userId } }
     );
 
-    // 5️⃣ Simple Push Notification
+    console.log(`✅ Updated DB: ${user.name} is now following ${followUser.name}`);
+
+    // 5️⃣ Send push notification
     if (followUser.fcmToken) {
-      await sendSimplePush({
-        fcmToken: followUser.fcmToken,
-        title: "New Follower 🎉",
-        body: `${user.name} started following you`,
-        data: {
-          type: "follow",
-          userId: userId.toString(),
-        },
-      });
+      console.log("📤 Sending push to FCM token:", followUser.fcmToken);
+      try {
+        const pushResponse = await sendSimplePush({
+          fcmToken: followUser.fcmToken,
+          title: "New Follower 🎉",
+          body: `${user.name} started following you`,
+          data: {
+            type: "follow",
+            userId: userId.toString(),
+          },
+        });
+        console.log("🔔 Push response:", pushResponse);
+      } catch (pushError) {
+        console.error("❌ Push notification failed:", pushError);
+      }
+    } else {
+      console.warn("⚠️ No FCM token found for user:", followUser._id);
     }
 
     return res.status(200).json({
@@ -766,14 +789,13 @@ export const followUser = async (req, res) => {
     });
 
   } catch (error) {
-    console.error("❌ followUser error:", error);
+    console.error("❌ followUser server error:", error);
     return res.status(500).json({
       success: false,
       message: "Server error",
     });
   }
 };
-
 
 /* ====================== UNFOLLOW USER ====================== */
 export const unfollowUser = async (req, res) => {
@@ -1125,24 +1147,27 @@ export const confirmDeleteAccount = async (req, res) => {
 /* ---------------------------------------------
    CREATE COMMUNICATION REQUEST
 --------------------------------------------- */
+// ---------------- CREATE COMMUNICATION REQUEST ----------------
 export const createRequest = async (req, res) => {
   try {
     const { fromUser, toUser, type } = req.body;
 
+    // 1️⃣ Validation
     if (!fromUser || !toUser || !type) {
       return res.status(400).json({
         success: false,
-        message: "fromUser, toUser, type required"
+        message: "fromUser, toUser, and type are required"
       });
     }
 
     if (fromUser === toUser) {
       return res.status(400).json({
         success: false,
-        message: "Cannot request yourself"
+        message: "Cannot send request to yourself"
       });
     }
 
+    // 2️⃣ Check if request already exists
     const exists = await CommunicationRequest.findOne({
       fromUser,
       toUser,
@@ -1157,20 +1182,52 @@ export const createRequest = async (req, res) => {
       });
     }
 
+    // 3️⃣ Fetch users for notification
+    const sender = await User.findById(fromUser).select("name fcmToken");
+    const receiver = await User.findById(toUser).select("name fcmToken");
+
+    if (!sender || !receiver) {
+      return res.status(404).json({
+        success: false,
+        message: "User not found"
+      });
+    }
+
+    // 4️⃣ Create communication request in DB
     const request = await CommunicationRequest.create({
       fromUser,
       toUser,
-      type
+      type,
+      status: "pending", // default
     });
+
+    // 5️⃣ Send FCM notification to receiver
+    if (receiver.fcmToken) {
+      await sendSimplePush({
+        fcmToken: receiver.fcmToken,
+        title: `${sender.name} sent you a ${type} request`,
+        body: `You have a new ${type} request from ${sender.name}`,
+        data: {
+          type: "communication_request",
+          requestId: request._id.toString(),
+          fromUser: fromUser.toString(),
+          toUser: toUser.toString(),
+        }
+      });
+    }
 
     return res.status(201).json({
       success: true,
-      message: "Communication request sent",
+      message: "Communication request sent successfully",
       request
     });
 
   } catch (error) {
-    return res.status(500).json({ success: false, message: error.message });
+    console.error("❌ createRequest error:", error);
+    return res.status(500).json({
+      success: false,
+      message: "Server error",
+    });
   }
 };
 
@@ -1224,11 +1281,13 @@ export const getMyRequests = async (req, res) => {
 /* ---------------------------------------------
    APPROVE / REJECT REQUEST
 --------------------------------------------- */
+// ---------------- HANDLE REQUEST ----------------
 export const handleRequest = async (req, res) => {
   try {
     const { requestId } = req.params;
     const { action } = req.body;
 
+    // 1️⃣ Fetch request
     const request = await CommunicationRequest.findById(requestId);
     if (!request) {
       return res.status(404).json({
@@ -1244,10 +1303,12 @@ export const handleRequest = async (req, res) => {
       });
     }
 
+    // 2️⃣ Determine new status
+    let newStatus;
     if (action === "approve") {
-      request.status = "approved";
+      newStatus = "approved";
     } else if (action === "reject") {
-      request.status = "rejected";
+      newStatus = "rejected";
     } else {
       return res.status(400).json({
         success: false,
@@ -1255,16 +1316,38 @@ export const handleRequest = async (req, res) => {
       });
     }
 
+    request.status = newStatus;
     await request.save();
+
+    // 3️⃣ Fetch sender for push notification
+    const sender = await User.findById(request.fromUser).select("name fcmToken");
+    const receiver = await User.findById(request.toUser).select("name");
+
+    if (sender && sender.fcmToken) {
+      await sendSimplePush({
+        fcmToken: sender.fcmToken,
+        title: `Your request was ${newStatus}`,
+        body: `${receiver.name} has ${newStatus} your ${request.type} request`,
+        data: {
+          type: "communication_request_update",
+          requestId: request._id.toString(),
+          status: newStatus,
+        }
+      });
+    }
 
     return res.status(200).json({
       success: true,
-      message: `Request ${request.status}`,
+      message: `Request ${newStatus}`,
       request
     });
 
   } catch (error) {
-    return res.status(500).json({ success: false, message: error.message });
+    console.error("❌ handleRequest error:", error);
+    return res.status(500).json({
+      success: false,
+      message: "Server error",
+    });
   }
 };
 
@@ -1642,151 +1725,203 @@ export const deleteFeedback = async (req, res) => {
 //////////////////////   calling flow ////////////////////////////////
 
 
-// ---------------- CONFIG ----------------
-const ZEGO_APP_ID = "1837791744";
-const ZEGO_SERVER_SECRET = "d5dd54734d0ec9c00a955ba0b37009ab0414e9419b4691f53d5063a0b1bccd1c";
-const MIN_COINS = 1;
-const BILL_INTERVAL = 60 * 1000;
-const POLL_INTERVAL = 5000;
-const CALL_TIMEOUT = 60 * 1000;
 
+const ZEGO_APP_ID = "1837791744";
+const ZEGO_SERVER_SECRET = "f45d2d08b7c9085571347535acf61177";
+// const MIN_COINS = 1;
+// const BILL_INTERVAL = 60 * 1000; // 1 minute
+// const POLL_INTERVAL = 5000; // 5 seconds
+// const CALL_TIMEOUT = 60 * 1000; // 1 minute
+
+// ---------------- CONFIG ----------------
+const MIN_COINS = 10;
+const POLL_INTERVAL = 3000; // 3 sec
+const CALL_TIMEOUT = 60000; // 60 sec
+const BILL_INTERVAL = 60000; // 1 min
+
+// Store active intervals
+const activeIntervals = new Map();
+const billingTimers = new Map();
 
 // ---------------- STEP 1: Initiate Call ----------------
 export const sendCallingRequest = async (req, res) => {
   try {
     const { senderId, receiverId, callerId, callType } = req.body;
 
-    // 1️⃣ Fetch sender & receiver
     const sender = await User.findById(senderId);
     const receiver = await User.findById(receiverId);
 
-    if (!sender || !receiver) {
+    if (!sender || !receiver)
       return res.status(404).json({ success: false, message: "User not found" });
-    }
 
-    // 2️⃣ Check minimum coins
-    if (sender.wallet < MIN_COINS || receiver.wallet < MIN_COINS) {
+    if (sender.wallet < MIN_COINS || receiver.wallet < MIN_COINS)
       return res.status(400).json({ success: false, message: "Not enough coins to start call" });
-    }
 
     const callerName = sender.name || sender.mobile || "Someone";
+    const zegoRoomId = `room_${Date.now()}_${senderId}_${receiverId}`;
+    const senderToken = zegoService.generateToken(`user_${senderId}`, zegoRoomId);
+    const receiverToken = zegoService.generateToken(`user_${receiverId}`, zegoRoomId);
 
-    // 3️⃣ Create call record
+    if (!senderToken || !receiverToken)
+      return res.status(500).json({ success: false, message: "Failed to generate call tokens" });
+
     const call = await Calling.create({
       senderId,
       receiverId,
       callerId,
       callType,
       callerName,
+      zegoRoomId,
+      senderZegoId: `user_${senderId}`,
+      receiverZegoId: `user_${receiverId}`,
       fcmToken: receiver.fcmToken || null,
       status: "RINGING",
       type: "incoming_call",
       coinsDeducted: 0,
     });
 
-    console.log("Call created:", call);
-
-    // 4️⃣ Send push notification (original payload style)
-    let pushNotificationResponse = null;
+    // Push to receiver
     if (receiver.fcmToken) {
-      pushNotificationResponse = await sendPushNotification({
+      await sendPushNotification({
         fcmToken: receiver.fcmToken,
         callId: call._id.toString(),
         senderId,
         receiverId,
         callerId,
         callerName,
-        callType
+        callType,
+        zegoData: {
+          roomId: zegoRoomId,
+          token: receiverToken,
+          appId: process.env.ZEGO_APP_ID,
+          userId: `user_${receiverId}`,
+          server: "wss://webliveroom1837791744-api.coolzcloud.com/ws",
+          backupServer: "wss://webliveroom1837791744-api-bak.coolzcloud.com/ws",
+        },
       });
     }
 
-    // 5️⃣ Start Zego room polling
-    pollZegoRoom(call._id);
+    monitorCallWithSDK(call._id, zegoRoomId, `user_${senderId}`, `user_${receiverId}`);
 
     return res.status(201).json({
       success: true,
       message: "Call initiated successfully",
       call,
       callerName,
-      type: "incoming_call",
-      pushNotification: pushNotificationResponse ? "Notification sent successfully" : "No FCM token provided",
-      pushNotificationData: pushNotificationResponse || {},
-      notificationMessage: `You have an incoming ${callType} call from ${callerName}`,
+      zegoCredentials: {
+        sender: {
+          appId: process.env.ZEGO_APP_ID,
+          roomId: zegoRoomId,
+          token: senderToken,
+          userId: `user_${senderId}`,
+          server: "wss://webliveroom1837791744-api.coolzcloud.com/ws",
+          backupServer: "wss://webliveroom1837791744-api-bak.coolzcloud.com/ws",
+        },
+        receiver: {
+          appId: process.env.ZEGO_APP_ID,
+          roomId: zegoRoomId,
+          token: receiverToken,
+          userId: `user_${receiverId}`,
+          server: "wss://webliveroom1837791744-api.coolzcloud.com/ws",
+          backupServer: "wss://webliveroom1837791744-api-bak.coolzcloud.com/ws",
+        },
+      },
     });
-
   } catch (error) {
     console.error("sendCallingRequest error:", error);
     return res.status(500).json({ success: false, message: error.message });
   }
 };
 
+// ---------------- STEP 2: Monitor Call ----------------
+const monitorCallWithSDK = async (callId, roomId, senderZegoId, receiverZegoId) => {
+  const call = await Calling.findById(callId);
+  if (!call || call.status !== "RINGING") return;
 
+  let elapsed = 0;
 
-// ---------------- STEP 2: Poll Zego Room ----------------
-const pollZegoRoom = async (callId) => {
-  try {
-    const call = await Calling.findById(callId);
-    if (!call || call.status !== "RINGING") return;
+  const interval = setInterval(async () => {
+    elapsed += POLL_INTERVAL;
 
-    let elapsed = 0;
+    try {
+      const roomUsers = await zegoService.getRoomUsers(roomId);
 
-    const interval = setInterval(async () => {
-      elapsed += POLL_INTERVAL;
+      const senderInRoom = roomUsers.some((u) => u.user_id === senderZegoId);
+      const receiverInRoom = roomUsers.some((u) => u.user_id === receiverZegoId);
 
-      // 1️⃣ Call Zego describe room API
-      const response = await axios.post("https://api.zego.im/room/describe", {
-        app_id: ZEGO_APP_ID,
-        room_id: call._id.toString(),
-        server_secret: ZEGO_SERVER_SECRET,
-      });
-
-      const members = response.data.members || [];
-
-      if (members.length >= 2) {
-        // ✅ Call Accepted
+      // Both joined → ACTIVE
+      if (senderInRoom && receiverInRoom) {
         call.status = "ACTIVE";
         call.type = "call_accepted";
         call.startedAt = Date.now();
         await call.save();
 
-        startBillingTimer(call._id);
         clearInterval(interval);
+        activeIntervals.delete(callId);
+
+        startBillingTimer(callId);
+        await notifyCallStatus(call, "Call connected");
 
       } else if (elapsed >= CALL_TIMEOUT) {
-        // ❌ Call Rejected / Missed
+        // Timeout → REJECTED
         call.status = "REJECTED";
         call.type = "call_rejected";
         call.endedAt = Date.now();
         await call.save();
 
-        await notifyCallStatus(call, "Call not answered");
         clearInterval(interval);
+        activeIntervals.delete(callId);
+
+        if (senderInRoom) await zegoService.kickUser(roomId, senderZegoId);
+        await notifyCallStatus(call, "Call not answered");
       }
 
-    }, POLL_INTERVAL);
+    } catch (err) {
+      console.error("Monitor error:", err);
+      if (elapsed >= CALL_TIMEOUT) {
+        clearInterval(interval);
+        activeIntervals.delete(callId);
+        const currCall = await Calling.findById(callId);
+        if (currCall && currCall.status === "RINGING") {
+          currCall.status = "REJECTED";
+          currCall.endedAt = Date.now();
+          await currCall.save();
+          await notifyCallStatus(currCall, "Call failed due to error");
+        }
+      }
+    }
+  }, POLL_INTERVAL);
 
-  } catch (error) {
-    console.error("pollZegoRoom error:", error);
-  }
+  activeIntervals.set(callId, interval);
 };
 
 // ---------------- STEP 3: Billing Timer ----------------
 const startBillingTimer = async (callId) => {
-  const call = await Calling.findById(callId);
-  if (!call) return;
-
-  const interval = setInterval(async () => {
-    const sender = await User.findById(call.senderId);
-    const receiver = await User.findById(call.receiverId);
-
-    // Stop call if any wallet reaches 0
-    if (sender.wallet <= 0 || receiver.wallet <= 0) {
-      await endCallDueToZeroCoins(callId);
-      clearInterval(interval);
+  const timer = setInterval(async () => {
+    const call = await Calling.findById(callId);
+    if (!call || call.status !== "ACTIVE") {
+      clearInterval(timer);
+      billingTimers.delete(callId);
       return;
     }
 
-    // Deduct 1 coin per minute
+    const sender = await User.findById(call.senderId);
+    const receiver = await User.findById(call.receiverId);
+
+    if (!sender || !receiver) {
+      await endCallManually(callId, "User not found");
+      clearInterval(timer);
+      billingTimers.delete(callId);
+      return;
+    }
+
+    if (sender.wallet <= 0 || receiver.wallet <= 0) {
+      await endCallDueToZeroCoins(callId);
+      clearInterval(timer);
+      billingTimers.delete(callId);
+      return;
+    }
+
     sender.wallet -= 1;
     receiver.wallet -= 1;
     await sender.save();
@@ -1796,31 +1931,96 @@ const startBillingTimer = async (callId) => {
     call.duration = call.duration ? call.duration + 60 : 60;
     await call.save();
 
+    console.log(`Billing: Deducted 1 coin for call ${callId}`);
   }, BILL_INTERVAL);
+
+  billingTimers.set(callId, timer);
 };
 
-// ---------------- STEP 4: End Call Due To Zero Coins ----------------
+// ---------------- STEP 4: End Call (Zero Coins) ----------------
 const endCallDueToZeroCoins = async (callId) => {
   const call = await Calling.findById(callId);
   if (!call) return;
 
   call.status = "ENDED";
-  call.type = "call_ended";
+  call.type = "call_ended_insufficient_coins";
   call.endedAt = Date.now();
   await call.save();
+
+  if (call.zegoRoomId) {
+    await Promise.all([
+      zegoService.kickUser(call.zegoRoomId, call.senderZegoId),
+      zegoService.kickUser(call.zegoRoomId, call.receiverZegoId),
+    ]);
+  }
 
   await notifyCallStatus(call, "Call ended due to insufficient coins");
 };
 
-// ---------------- STEP 5: Notify Users via FCM ----------------
+// ---------------- STEP 5: Manual End Call ----------------
+export const endCall = async (req, res) => {
+  const { callId, userId } = req.body;
+
+  const call = await Calling.findById(callId);
+  if (!call) return res.status(404).json({ success: false, message: "Call not found" });
+
+  if (call.senderId.toString() !== userId && call.receiverId.toString() !== userId)
+    return res.status(403).json({ success: false, message: "Not authorized" });
+
+  call.status = "ENDED";
+  call.type = "call_ended_by_user";
+  call.endedAt = Date.now();
+  await call.save();
+
+  if (activeIntervals.has(callId)) {
+    clearInterval(activeIntervals.get(callId));
+    activeIntervals.delete(callId);
+  }
+  if (billingTimers.has(callId)) {
+    clearInterval(billingTimers.get(callId));
+    billingTimers.delete(callId);
+  }
+
+  if (call.zegoRoomId) {
+    await Promise.all([
+      zegoService.kickUser(call.zegoRoomId, call.senderZegoId),
+      zegoService.kickUser(call.zegoRoomId, call.receiverZegoId),
+    ]);
+  }
+
+  await notifyCallStatus(call, "Call ended by user");
+  return res.status(200).json({ success: true, message: "Call ended", call });
+};
+
+// ---------------- STEP 6: Helper ----------------
+const endCallManually = async (callId, reason) => {
+  const call = await Calling.findById(callId);
+  if (!call) return;
+
+  call.status = "ENDED";
+  call.type = `call_ended_${reason.toLowerCase().replace(/\s+/g, "_")}`;
+  call.endedAt = Date.now();
+  await call.save();
+
+  if (call.zegoRoomId) {
+    await Promise.all([
+      zegoService.kickUser(call.zegoRoomId, call.senderZegoId),
+      zegoService.kickUser(call.zegoRoomId, call.receiverZegoId),
+    ]);
+  }
+
+  await notifyCallStatus(call, `Call ended: ${reason}`);
+};
+
+// ---------------- STEP 7: Notify Users ----------------
 const notifyCallStatus = async (call, message) => {
   const sender = await User.findById(call.senderId);
   const receiver = await User.findById(call.receiverId);
 
-  const users = [sender, receiver];
+  const users = [sender, receiver].filter(Boolean);
 
   for (let user of users) {
-    if (user.fcmToken) {
+    if (user && user.fcmToken) {
       await sendPushNotification({
         fcmToken: user.fcmToken,
         callId: call._id.toString(),
@@ -1828,19 +2028,42 @@ const notifyCallStatus = async (call, message) => {
         receiverId: call.receiverId.toString(),
         callerId: call.callerId,
         callerName: call.callerName,
-        callType: call.callType
+        callType: call.callType,
+        callStatus: call.status,
+        message,
       });
     }
   }
 };
 
-
-
-
-
-
-// Accept / Reject call
-// ---------------- STEP 6: KEEP YOUR ORIGINAL updateCallStatus ----------------
+// ---------------- STEP 8: Cleanup on Server Restart ----------------
+export const cleanupActiveCalls = async () => {
+  try {
+    // End all ACTIVE calls on server restart
+    const activeCalls = await Calling.find({ status: "ACTIVE" });
+    
+    for (const call of activeCalls) {
+      call.status = "ENDED";
+      call.type = "call_ended_server_restart";
+      call.endedAt = Date.now();
+      await call.save();
+      
+      if (call.zegoRoomId) {
+        await Promise.all([
+          zegoService.kickUser(call.zegoRoomId, call.senderZegoId),
+          zegoService.kickUser(call.zegoRoomId, call.receiverZegoId)
+        ]);
+      }
+    }
+    
+    console.log(`Cleaned up ${activeCalls.length} active calls`);
+  } catch (error) {
+    console.error("cleanupActiveCalls error:", error);
+  }
+};
+/* =========================================================
+   UPDATE CALL STATUS
+========================================================= */
 export const updateCallStatus = async (req, res) => {
   try {
     const { callId } = req.params;
@@ -1848,66 +2071,39 @@ export const updateCallStatus = async (req, res) => {
 
     const call = await Calling.findById(callId);
     if (!call) {
-      return res.status(404).json({ success: false, message: "Call not found" });
-    }
-
-    // 🔹 Update status
-    call.status = status;
-
-    // 🔹 Handle timestamps
-    if (status === "accepted") {
-      call.startedAt = Date.now();
-      call.type = "call_accepted";
-    }
-
-    if (status === "rejected") {
-      call.endedAt = Date.now();
-      call.type = "call_rejected";
-    }
-
-    if (status === "ended") {
-      call.endedAt = Date.now();
-      call.type = "call_ended";
-    }
-
-    if (status === "missed") {
-      call.endedAt = Date.now();
-      call.type = "call_missed";
-    }
-
-    // 🔹 Calculate duration
-    if (call.startedAt && call.endedAt) {
-      call.duration = Math.floor(
-        (call.endedAt - call.startedAt) / 1000
-      );
-    }
-
-    await call.save();
-
-    // 🔔 Send Push Notification on status change
-    if (call.fcmToken) {
-      await sendPushNotification({
-        fcmToken: call.fcmToken,
-        title: "Call Update",
-        body: `Call ${status}`,
-        data: {
-          callId: call._id.toString(),
-          status,
-          type: call.type,
-          callerName: call.callerName,
-          callType: call.callType,
-        },
+      return res.status(404).json({
+        success: false,
+        message: "Call not found",
       });
     }
 
+    if (status === "accepted") {
+      call.status = "ACTIVE";
+      call.startedAt = Date.now();
+      await call.save();
+      startBillingTimer(callId);
+    } else if (status === "rejected" || status === "ended") {
+      call.status = status.toUpperCase();
+      call.endedAt = Date.now();
+      await call.save();
+    }
+
+    // Return full call + ZEGO info if ACTIVE
+    const senderToken = generateZegoToken(call.senderId);
+    const receiverToken = generateZegoToken(call.receiverId);
+
     return res.status(200).json({
       success: true,
-      message: `Call ${status}`,
       call,
+      zego: {
+        appID: ZEGO_APP_ID,
+        roomID: call._id.toString(),
+        sender: { userID: call.senderId, token: senderToken },
+        receiver: { userID: call.receiverId, token: receiverToken },
+      },
     });
-
   } catch (error) {
-    console.error("❌ updateCallStatus error:", error);
+    console.error("updateCallStatus:", error);
     return res.status(500).json({
       success: false,
       message: error.message,

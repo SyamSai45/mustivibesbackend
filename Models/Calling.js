@@ -5,21 +5,17 @@ const callingSchema = new mongoose.Schema(
     senderId: {
       type: mongoose.Schema.Types.ObjectId,
       ref: "User",
-      required: true,
     },
     receiverId: {
       type: mongoose.Schema.Types.ObjectId,
       ref: "User",
-      required: true,
     },
     callerId: {
       type: String, // Could be Zego Room ID
-      required: true,
     },
     callType: {
       type: String,
       enum: ["audio", "video"],
-      required: true,
     },
     callerName: {
       type: String,
@@ -31,12 +27,12 @@ const callingSchema = new mongoose.Schema(
     },
     status: {
       type: String,
-      enum: ["initiated", "ringing", "active", "accepted", "rejected", "ended", "missed"],
+      enum: ["initiated", "ringing", "active", "RINGING", "accepted", "rejected", "ended", "missed", "ACTIVE", "ENDED", "REJECTED", "MISSED", "FAILED"],
       default: "initiated",
     },
     type: {
       type: String,
-      enum: ["incoming_call", "call_accepted", "call_rejected", "call_ended", "call_missed"],
+      enum: ["incoming_call", "call_accepted", "call_rejected", "call_ended", "call_missed", "call_failed"],
       default: "incoming_call",
     },
     startedAt: {
