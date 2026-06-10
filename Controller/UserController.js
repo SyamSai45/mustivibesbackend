@@ -17,9 +17,44 @@ import Admin from "../Models/Admin.js";
 import Redeem from "../Models/Redeem.js";
 import CoinToRupee from "../Models/CoinToRupee.js";
 import AdminSettings from "../Models/AdminSettings.js";
+// Add at top with other imports
+import createAdminNotification from "../utils/AdminNotificationService.js";
 
 
-
+// // Helper function to create admin notifications
+// const createAdminNotification = async ({
+//   title,
+//   body,
+//   type,
+//   relatedUser = null,
+//   relatedData = {},
+//   priority = 'medium'
+// }) => {
+//   try {
+//     const notification = await AdminNotification.create({
+//       title,
+//       body,
+//       type,
+//       relatedUser,
+//       relatedData,
+//       priority,
+//       isRead: false
+//     });
+    
+//     console.log(`✅ Admin notification created: ${type} - ${title}`);
+    
+//     // Optional: Emit socket event for real-time admin dashboard
+//     const io = req?.app?.get("io");
+//     if (io) {
+//       io.to('admin-room').emit('new-admin-notification', notification);
+//     }
+    
+//     return notification;
+//   } catch (error) {
+//     console.error('❌ Error creating admin notification:', error);
+//     return null;
+//   }
+// };
 
 
 // ✅ Add this helper function at the top (after imports)
@@ -227,7 +262,18 @@ export const createUser = async (req, res) => {
     }
 
     const user = await User.create({ mobile, fcmToken }); // ✅ store fcmToken
-
+    // ✅ ADMIN NOTIFICATION: New user registered
+    await createAdminNotification({
+      title: "🆕 New User Registered",
+      body: `New user registered with mobile: ${mobile}`,
+      type: 'new_user',
+      relatedUser: user._id,
+      relatedData: {
+        mobile: user.mobile,
+        createdAt: user.createdAt
+      },
+      priority: 'medium'
+    });
     const token = generateToken({
       userId: user._id.toString(),
       mobile: user.mobile
@@ -1657,6 +1703,21 @@ export const createFeedback = async (req, res) => {
       user: userId,
       rating,
       experience
+    });
+
+        // ✅ ADMIN NOTIFICATION: New feedback submitted
+    await createAdminNotification({
+      title: "📝 New Feedback Received",
+      body: `${user.name || user.mobile} submitted feedback with rating: ${rating}/5`,
+      type: 'feedback_submitted',
+      relatedUser: userId,
+      relatedData: {
+        feedbackId: feedback._id,
+        rating,
+        experience,
+        createdAt: feedback.createdAt
+      },
+      priority: 'low'
     });
 
     return res.status(201).json({
@@ -4137,6 +4198,22 @@ export const createRedeemRequest = async (req, res) => {
       amount,
       upiId,
       status: "process"
+    });
+
+   // ✅ ADMIN NOTIFICATION: New redeem request
+    await createAdminNotification({
+      title: "💸 New Redeem Request",
+      body: `${user.name || user.mobile} requested to redeem ${coins} coins (₹${amount})`,
+      type: 'redeem_request',
+      relatedUser: userId,
+      relatedData: {
+        redeemId: redeemRequest._id,
+        coins,
+        amount,
+        upiId,
+        userCoinsAfterDeduction: user.totalCoins
+      },
+      priority: 'high'
     });
 
     return res.status(201).json({

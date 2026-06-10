@@ -3,6 +3,10 @@ import CoinPayment from "../Models/CoinPayment.js";
 import CoinPackage from "../Models/CoinPackage.js";
 import User from "../Models/User.js";
 import razorpay from "../config/razorpay.js";
+// Add at top
+import createAdminNotification from "../utils/AdminNotificationService.js";
+import sendSimplePush from "../utils/sendSimplePush.js"; 
+
 
 /* ================= CREATE ORDER ================= */
 export const createCoinOrder = async (req, res) => {
@@ -30,7 +34,16 @@ export const createCoinOrder = async (req, res) => {
     // 🔥 EVERY REQUEST = NEW TRANSACTION
 
     // 🔹 Save payment (NEW every time)
-    await CoinPayment.create({
+    // await CoinPayment.create({
+    //   userId,
+    //   packageId,
+    //   razorpayPaymentId: transactionId,
+    //   amount: pack.price,
+    //   coins: pack.coins,
+    //   status: "completed"
+    // });
+
+        const payment = await CoinPayment.create({
       userId,
       packageId,
       razorpayPaymentId: transactionId,
@@ -38,7 +51,6 @@ export const createCoinOrder = async (req, res) => {
       coins: pack.coins,
       status: "completed"
     });
-
     // 🔹 Transaction history
     const historyEntry = {
       type: "credited",
@@ -56,7 +68,22 @@ export const createCoinOrder = async (req, res) => {
       },
       { new: true }
     );
-
+     // ✅ ADMIN NOTIFICATION: User purchased coins
+    await createAdminNotification({
+      title: "💰 Coins Purchased",
+      body: `User ${user.name || user.mobile} purchased ${pack.coins} coins for ₹${pack.price}`,
+      type: 'payment_received',
+      relatedUser: userId,
+      relatedData: {
+        packageId: pack._id,
+        packageCoins: pack.coins,
+        amount: pack.price,
+        transactionId,
+        paymentId: payment._id,
+        newTotalCoins: user.totalCoins
+      },
+      priority: 'medium'
+    });
     // 🔹 Create notification for user
     const coinAddedNotification = {
       title: "Coins Credited 🎉",

@@ -4,8 +4,8 @@ import User from "../Models/User.js";
 import AdminSettings from "../Models/AdminSettings.js";
 import CoinDeductionRule from "../Models/CoinDeductionRule.js";
 import sendSimplePush from "../utils/sendSimplePush.js";
-
-// ----------------------------------------------------
+// Add at top
+import createAdminNotification from "../utils/AdminNotificationService.js";
 // CREATE ROOM
 // ----------------------------------------------------
 
@@ -88,6 +88,24 @@ export const createRoom = async (req, res) => {
       adminId,
       startDateTime,
       duration,
+    });
+
+
+    // ✅ ADMIN NOTIFICATION: New room created
+    await createAdminNotification({
+      title: "🎥 New Room Created",
+      body: `${userExists.name || userExists.mobile} created a ${type} room`,
+      type: 'room_created',
+      relatedUser: userId,
+      relatedData: {
+        roomId: room._id,
+        roomType: type,
+        tag,
+        duration,
+        startDateTime,
+        coinsDeducted: userId !== adminId ? coinsToDeduct : 0
+      },
+      priority: 'medium'
     });
 
     // Add a notification for the user who created the room
@@ -499,6 +517,36 @@ export const createReport  = async (req, res) => {
       reportedBy,
       reportedUser,
       reason,
+    });
+
+        // Get user details for notification
+    const [reporter, reported] = await Promise.all([
+      User.findById(reportedBy),
+      User.findById(reportedUser)
+    ]);
+
+  // ✅ ADMIN NOTIFICATION: New user report
+    await createAdminNotification({
+      title: "🚨 New User Report",
+      body: `${reporter?.name || reporter?.mobile} reported ${reported?.name || reported?.mobile}`,
+      type: 'user_reported',
+      relatedUser: reportedUser,
+      relatedData: {
+        reportId: report._id,
+        reportedBy: {
+          id: reportedBy,
+          name: reporter?.name,
+          mobile: reporter?.mobile
+        },
+        reportedUser: {
+          id: reportedUser,
+          name: reported?.name,
+          mobile: reported?.mobile
+        },
+        reason,
+        createdAt: report.createdAt
+      },
+      priority: 'high'
     });
 
     return res.status(201).json({

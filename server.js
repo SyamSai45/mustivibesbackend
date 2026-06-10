@@ -45,6 +45,31 @@ app.get('/', (req, res) => res.json({ message: 'Backend running...' }));
 
 connectDatabase();
 
+// ✅ Fix stale index on appfeedbacks collection (run once on startup)
+import mongoose from 'mongoose';
+
+mongoose.connection.once('open', async () => {
+  const collectionsToFix = [
+    { collection: 'appfeedbacks', index: 'userId_1' },
+    { collection: 'adminnotifications', index: 'userId_1' },
+    { collection: 'callings', index: 'userId_1' },
+    { collection: 'redeem', index: 'userId_1' },
+    { collection: 'coinpayments', index: 'userId_1' },
+    { collection: 'communicationrequests', index: 'userId_1' },
+    { collection: 'rooms', index: 'userId_1' },
+    { collection: 'messages', index: 'userId_1' },
+    { collection: 'users', index: 'userId_1' },
+  ];
+
+  for (const item of collectionsToFix) {
+    try {
+      await mongoose.connection.collection(item.collection).dropIndex(item.index);
+      console.log(`✅ Dropped ${item.index} from ${item.collection}`);
+    } catch (err) {
+      console.log(`ℹ️ ${item.collection} - ${item.index} not found (already clean)`);
+    }
+  }
+});
 // Create HTTP server and Socket.io instance
 const server = http.createServer(app);
 const io = new Server(server, {
