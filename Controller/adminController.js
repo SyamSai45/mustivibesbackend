@@ -239,6 +239,139 @@ export const handleUserLeft = async (req, res) => {
   }
 };
 
+// ================= Update user ==============
+
+export const updateUser = async (req, res) => {
+  try {
+    const { userId } = req.params;
+     // ✅ CHECK MONGODB CONNECTION STATUS
+    if (mongoose.connection.readyState !== 1) {
+      console.error("❌ MongoDB not connected. State:", mongoose.connection.readyState);
+      return res.status(500).json({
+        success: false,
+        message: "Database connection not established",
+        details: "Please check MongoDB connection"
+      });
+    }
+
+    console.log("✅ MongoDB connection state:", mongoose.connection.readyState);
+    const {
+      name,
+      nickname,
+      email,
+      mobile,
+      gender,
+      dob,
+      language,
+      userType,
+      totalCoins,
+      wallet,
+      warningsCount,
+      isTemporarilyBlocked,
+      isPermanentlyBlocked,
+      hasCompletedProfile,
+      hasLoggedIn,
+      isOnline,
+      fcmToken
+    } = req.body;
+
+    // Validate userId
+    if (!userId) {
+      return res.status(400).json({
+        success: false,
+        message: "userId is required in params"
+      });
+    }
+
+    // Check if user exists
+    const user = await User.findById(userId);
+    if (!user) {
+      return res.status(404).json({
+        success: false,
+        message: "User not found"
+      });
+    }
+
+    // Build update object with only provided fields
+    const updateData = {};
+
+    // Basic Info
+    if (name !== undefined) updateData.name = name;
+    if (nickname !== undefined) updateData.nickname = nickname;
+    if (email !== undefined) updateData.email = email;
+    if (mobile !== undefined) updateData.mobile = mobile;
+    if (gender !== undefined) updateData.gender = gender;
+    if (dob !== undefined) updateData.dob = dob;
+    if (language !== undefined) updateData.language = language;
+    if (userType !== undefined) updateData.userType = userType;
+    if (fcmToken !== undefined) updateData.fcmToken = fcmToken;
+
+    // Coin/Wallet related
+    if (totalCoins !== undefined) updateData.totalCoins = totalCoins;
+    if (wallet !== undefined) updateData.wallet = wallet;
+
+    // Warning/Block related
+    if (warningsCount !== undefined) updateData.warningsCount = warningsCount;
+    if (isTemporarilyBlocked !== undefined) updateData.isTemporarilyBlocked = isTemporarilyBlocked;
+    if (isPermanentlyBlocked !== undefined) updateData.isPermanentlyBlocked = isPermanentlyBlocked;
+
+    // Profile status
+    if (hasCompletedProfile !== undefined) updateData.hasCompletedProfile = hasCompletedProfile;
+    if (hasLoggedIn !== undefined) updateData.hasLoggedIn = hasLoggedIn;
+    if (isOnline !== undefined) updateData.isOnline = isOnline;
+
+    // Handle temporary block expiry if block is being removed
+    if (isTemporarilyBlocked === false && updateData.isTemporarilyBlocked === false) {
+      updateData.temporaryBlockExpiresAt = null;
+    }
+
+    // Add lastActive timestamp
+    updateData.lastActive = new Date();
+
+    // Update the user
+    const updatedUser = await User.findByIdAndUpdate(
+      userId,
+      { $set: updateData },
+      { new: true, runValidators: true }
+    ).select('-password -otp -token -deleteToken -deleteTokenExpiration -referralUsedBy');
+
+    // ✅ ADMIN NOTIFICATION: User details updated
+    await createAdminNotification({
+      title: "✏️ User Details Updated",
+      body: `Admin updated details for user: ${updatedUser.name || updatedUser.mobile}`,
+      type: 'admin_action',
+      relatedUser: userId,
+      relatedData: {
+        updatedFields: Object.keys(updateData),
+        previousData: {
+          name: user.name,
+          nickname: user.nickname,
+          gender: user.gender,
+          totalCoins: user.totalCoins,
+          warningsCount: user.warningsCount,
+          isTemporarilyBlocked: user.isTemporarilyBlocked,
+          isPermanentlyBlocked: user.isPermanentlyBlocked
+        },
+        newData: updateData
+      },
+      priority: 'medium'
+    });
+
+    return res.status(200).json({
+      success: true,
+      message: "User updated successfully",
+      user: updatedUser
+    });
+
+  } catch (error) {
+    console.error("❌ updateUser error:", error);
+    return res.status(500).json({
+      success: false,
+      message: "Error updating user",
+      error: error.message
+    });
+  }
+};
 
 /* ================= CREATE ================= */
 export const createCoinPackage = async (req, res) => {

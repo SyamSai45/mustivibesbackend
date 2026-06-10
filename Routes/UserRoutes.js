@@ -17,6 +17,7 @@ router.put('/createprofile/:userId', upload.single("profileImage"), UserControll
 router.put("/profileimage/:userId", upload.single("profileImage"), UserController.updateUserProfileImage);
 router.delete("/profile-image/:userId", UserController.deleteUserProfileImage);
 router.get("/profile/:userId", UserController.getUserProfile);
+router.put("/updateuser/:userId", UserController.updateUserProfile);
 router.put("/update-language/:userId", UserController.updateLanguage);
 router.put("/update-location", UserController.updateUserLocation);
 router.get('/getlocation/:userId', UserController.getUserLocation);

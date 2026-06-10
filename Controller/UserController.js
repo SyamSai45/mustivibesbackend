@@ -463,6 +463,97 @@ export const getUserProfile = async (req, res) => {
   }
 };
 
+// ===========================================
+// UPDATE USER PROFILE (USER SELF-UPDATE)
+// Users can only update: nickname, dob, language
+// ===========================================
+export const updateUserProfile = async (req, res) => {
+  try {
+    const { userId } = req.params;
+    const { nickname, dob, language } = req.body;
+
+    // Validate userId
+    if (!userId) {
+      return res.status(400).json({
+        success: false,
+        message: "userId is required in params"
+      });
+    }
+
+    // Check if user exists
+    const user = await User.findById(userId);
+    if (!user) {
+      return res.status(404).json({
+        success: false,
+        message: "User not found"
+      });
+    }
+
+    // Build update object - ONLY allowed fields
+    const updateData = {};
+    const changes = [];
+
+    // ✅ ONLY THESE THREE FIELDS CAN BE UPDATED BY USER
+    if (nickname !== undefined) {
+      updateData.nickname = nickname;
+      changes.push(`nickname: ${user.nickname || 'not set'} → ${nickname}`);
+    }
+    
+    if (dob !== undefined) {
+      updateData.dob = dob;
+      changes.push(`dob: ${user.dob || 'not set'} → ${dob}`);
+    }
+    
+    if (language !== undefined) {
+      updateData.language = language;
+      changes.push(`language: ${user.language || 'English'} → ${language}`);
+    }
+
+    // Check if any field was provided
+    if (Object.keys(updateData).length === 0) {
+      return res.status(400).json({
+        success: false,
+        message: "At least one field to update is required. Allowed fields: nickname, dob, language"
+      });
+    }
+
+    // Add lastActive timestamp
+    updateData.lastActive = new Date();
+
+    // Update the user
+    const updatedUser = await User.findByIdAndUpdate(
+      userId,
+      { $set: updateData },
+      { new: true, runValidators: true }
+    ).select('-password -otp -token -deleteToken -deleteTokenExpiration -referralUsedBy -transactionhistyry -notifications');
+
+    return res.status(200).json({
+      success: true,
+      message: "Profile updated successfully",
+      updatedFields: changes,
+      user: {
+        _id: updatedUser._id,
+        name: updatedUser.name,
+        nickname: updatedUser.nickname,
+        email: updatedUser.email,
+        mobile: updatedUser.mobile,
+        gender: updatedUser.gender,
+        dob: updatedUser.dob,
+        language: updatedUser.language,
+        profileImage: updatedUser.profileImage,
+        userType: updatedUser.userType
+      }
+    });
+
+  } catch (error) {
+    console.error("❌ updateUserProfile error:", error);
+    return res.status(500).json({
+      success: false,
+      message: "Error updating profile",
+      error: error.message
+    });
+  }
+};
 
 // ----------------------------------------------------
 // 📌 DELETE USER PROFILE IMAGE ONLY

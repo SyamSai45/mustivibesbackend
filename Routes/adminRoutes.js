@@ -3,6 +3,9 @@ import  * as admin from  "../Controller/adminController.js";
 
 const router = express.Router();
 
+// Update user
+router.put("/users/update/:userId", admin.updateUser);
+
 router.post("/packages", admin.createCoinPackage);
 router.get("/packages", admin.getAllCoinPackages);
 router.get("/packages/:packageId", admin.getCoinPackageById);

@@ -7,9 +7,9 @@ import cookieParser from 'cookie-parser';
 import dotenv from 'dotenv';
 import path from 'path';
 import http from 'http';
+import dns from 'dns';
 import { fileURLToPath } from 'url';
 import { Server } from 'socket.io';
-
 import connectDatabase from './db/connectDatabase.js';
 import userRoutes from './Routes/UserRoutes.js';
 import chatRoutes from './Routes/chatRoutes.js';
@@ -20,6 +20,9 @@ import cron from 'node-cron'; // Importing node-cron package
 import Room from './Models/RoomModel.js';
 import { parse, format } from 'date-fns'; // Import date-fns
 
+
+dns.setDefaultResultOrder("ipv4first");
+dns.setServers(["8.8.8.8", "8.8.4.4", "1.1.1.1"]);
 
 dotenv.config();
 const __filename = fileURLToPath(import.meta.url);
